@@ -2,8 +2,8 @@
 
 An interactive configurator for a from-scratch, Gemma-4-Nano-style small language model —
 interleaved local/global attention, grouped-query attention, QK-RMSNorm, partial RoPE, and
-cross-layer KV-cache sharing. Tune every architecture and training variable, see a live
-parameter-count and VRAM estimate, and export a ready-to-train Python config.
+cross-layer KV-cache sharing. Tune every architecture and training variable and see a live
+parameter-count and VRAM estimate update as you go.
 
 Built by [IdeaWeaver AI Labs](https://www.ideaweaver.ai) to go with the
 [Building Small Language Models from Scratch](https://www.ideaweaver.ai/courses) course.
@@ -28,5 +28,3 @@ Then open http://localhost:3000.
   architecture math as the actual PyTorch model — not placeholders.
 - "Start Training" renders a simulated loss curve so the panel isn't static; it does not train a
   real model in the browser or in this Colab session.
-- **Export** produces a real `slm_config.py` / `slm_config.json` you can drop into an actual
-  training script.
