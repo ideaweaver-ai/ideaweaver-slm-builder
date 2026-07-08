@@ -48,9 +48,6 @@ type Config = {
   pleDim: number;
   // output
   finalLogitSoftcapping: number;
-  // dataset
-  datasetName: string;
-  totalTokens: number;
   // training
   learningRate: number;
   maxIters: number;
@@ -92,8 +89,6 @@ const PRESET_T4_20L: Config = {
   numKvSharedLayers: 6,
   pleDim: 0,
   finalLogitSoftcapping: 30,
-  datasetName: "TinyStories",
-  totalTokens: 450_000_000,
   learningRate: 0.0005,
   maxIters: 10000,
   warmupSteps: 300,
@@ -140,6 +135,10 @@ const PRESETS: { id: string; label: string; blurb: string; cfg: Config }[] = [
   { id: "colab-15l", label: "Colab Free · 15 layers", blurb: "Smaller + faster iteration loop", cfg: PRESET_COLAB_15L },
   { id: "a100-24l", label: "A100 · 24 layers", blurb: "Wider model, bf16 tensor cores", cfg: PRESET_A100_24L },
 ];
+
+// This build only trains on TinyStories — its size is fixed here rather
+// than exposed as an editable field.
+const TINYSTORIES_TOTAL_TOKENS = 450_000_000;
 
 const GPU_INFO: Record<GPU, { vramGB: number; bf16TensorCores: boolean; arch: string }> = {
   T4: { vramGB: 16, bf16TensorCores: false, arch: "Turing (SM 7.5)" },
@@ -535,9 +534,9 @@ export default function SLMBuilder() {
   const params = useMemo(() => estimateParams(cfg), [cfg]);
 
   const effectiveTokensPerStep = cfg.batchSize * cfg.gradAccumSteps * cfg.blockSize;
-  const stepsPerEpoch = Math.max(1, Math.round(cfg.totalTokens / effectiveTokensPerStep));
+  const stepsPerEpoch = Math.max(1, Math.round(TINYSTORIES_TOTAL_TOKENS / effectiveTokensPerStep));
   const totalTrainingTokens = cfg.maxIters * effectiveTokensPerStep;
-  const epochs = totalTrainingTokens / cfg.totalTokens;
+  const epochs = totalTrainingTokens / TINYSTORIES_TOTAL_TOKENS;
 
   const gpuInfo = GPU_INFO[cfg.gpu];
   const bytesPerParam = 2; // bf16/fp16
@@ -707,18 +706,10 @@ export default function SLMBuilder() {
               </div>
             </Card>
 
-            <Card title="Dataset" subtitle="What the model trains on" icon="📚">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-medium text-zinc-400">Dataset name</span>
-                  <input
-                    type="text"
-                    value={cfg.datasetName}
-                    onChange={(e) => set("datasetName", e.target.value)}
-                    className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-sm text-white outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
-                  />
-                </label>
-                <NumField label="Total tokens" value={cfg.totalTokens} onChange={(v) => set("totalTokens", v)} step={1_000_000} mono />
+            <Card title="Dataset" subtitle="Fixed for this build" icon="📚">
+              <div className="rounded-lg border border-white/[0.08] bg-black/20 px-3 py-2.5 text-sm text-zinc-300">
+                <span className="font-semibold text-white">TinyStories</span> — the only dataset this
+                build trains on right now (~450M tokens, used for the epoch estimate in the Run panel).
               </div>
             </Card>
 
