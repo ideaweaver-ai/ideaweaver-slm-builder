@@ -11,7 +11,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "IdeaWeaver SLM Builder | Configure a Small Language Model",
   description:
-    "Configure a from-scratch, Gemma-4-Nano-style small language model — attention, RoPE, KV-cache sharing, training hyperparameters — and export a ready-to-train Python config.",
+    "Configure a from-scratch, Gemma-4-Nano-style small language model — attention, RoPE, KV-cache sharing, training hyperparameters — and actually train it on TinyStories.",
 };
 
 export default function RootLayout({
@@ -21,7 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="bg-[#09090b] font-sans text-white antialiased">
+      {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject
+          attributes into <body> before React hydrates — that's a benign
+          mismatch, not an app bug. */}
+      <body className="bg-[#09090b] font-sans text-white antialiased" suppressHydrationWarning>
         {children}
       </body>
     </html>
