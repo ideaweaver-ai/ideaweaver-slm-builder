@@ -6,11 +6,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
    IdeaWeaver SLM Builder
    Interactive configurator for a from-scratch, Gemma-4-Nano-style small
    language model (interleaved local/global attention, GQA, QK-norm,
-   partial RoPE, cross-layer KV-cache sharing). Everything below — the
-   parameter count, VRAM estimate, and warnings — is computed client-side
-   from the same architecture this page lets you configure; nothing is
-   sent anywhere. "Start Training" is a simulated run for previewing the
-   config; export a ready-to-run Python config for the real thing.
+   partial RoPE, cross-layer KV-cache sharing). The parameter count, VRAM
+   estimate, and warnings are computed client-side from the same
+   architecture this page lets you configure. "Start Training" calls the
+   real Python backend (backend/train_service.py) — it builds this exact
+   model, trains it on TinyStories, and streams real loss back over SSE.
+   Requires the backend running locally or in Colab (see README).
    ──────────────────────────────────────────────────────────────────────── */
 
 const IDEAWEAVER_HOME = "https://www.ideaweaver.ai";
@@ -511,24 +512,36 @@ function Nav() {
 
 /* ── Page ────────────────────────────────────────────────────────────── */
 
+type TrainStatus = "idle" | "starting" | "preparing_data" | "training" | "done" | "error" | "stopped";
+
 export default function SLMBuilder() {
   const [cfg, setCfg] = useState<Config>(PRESET_T4_20L);
   const [activePreset, setActivePreset] = useState("t4-20l");
   const [history, setHistory] = useState<Point[]>([]);
-  const [running, setRunning] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [trainStatus, setTrainStatus] = useState<TrainStatus>("idle");
+  const [trainMessage, setTrainMessage] = useState("");
+  const [hasCheckpoint, setHasCheckpoint] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
+  const running = trainStatus === "starting" || trainStatus === "preparing_data" || trainStatus === "training";
 
   const set = <K extends keyof Config>(key: K, value: Config[K]) =>
     setCfg((prev) => ({ ...prev, [key]: value }));
+
+  const resetTrainingUI = () => {
+    esRef.current?.close();
+    esRef.current = null;
+    setHistory([]);
+    setTrainStatus("idle");
+    setTrainMessage("");
+    setHasCheckpoint(false);
+  };
 
   const applyPreset = (id: string) => {
     const p = PRESETS.find((x) => x.id === id);
     if (!p) return;
     setCfg(p.cfg);
     setActivePreset(id);
-    setHistory([]);
-    setRunning(false);
-    if (timerRef.current) clearInterval(timerRef.current);
+    resetTrainingUI();
   };
 
   const params = useMemo(() => estimateParams(cfg), [cfg]);
@@ -581,37 +594,100 @@ export default function SLMBuilder() {
     return w;
   }, [cfg, gpuInfo, peakVramGB]);
 
-  const startTraining = () => {
+  const startTraining = async () => {
     setHistory([]);
-    setRunning(true);
-    let step = 0;
-    const startLoss = Math.log(cfg.vocabSize);
-    const targetLoss = 1.2 + Math.random() * 0.3;
-    const totalPoints = 40;
-    let prevSmoothed = startLoss;
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      step++;
-      const t = step / totalPoints;
-      const decay = startLoss - (startLoss - targetLoss) * (1 - Math.exp(-3.2 * t));
-      const noise = (Math.random() - 0.5) * 0.18 * (1 - t * 0.6);
-      const loss = Math.max(targetLoss * 0.85, decay + noise);
-      const smoothed = prevSmoothed * 0.85 + loss * 0.15;
-      prevSmoothed = smoothed;
-      setHistory((h) => [
-        ...h,
-        { step: step * cfg.evalInterval, loss, smoothed },
-      ]);
-      if (step >= totalPoints) {
-        setRunning(false);
-        if (timerRef.current) clearInterval(timerRef.current);
+    setHasCheckpoint(false);
+    setTrainStatus("starting");
+    setTrainMessage("Starting…");
+
+    let res: Response;
+    try {
+      res = await fetch("/api/train/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vocabSize: cfg.vocabSize,
+          contextLength: cfg.contextLength,
+          embDim: cfg.embDim,
+          nHeads: cfg.nHeads,
+          nLayers: cfg.nLayers,
+          hiddenDim: cfg.hiddenDim,
+          headDim: cfg.headDim,
+          nKvHeads: cfg.nKvHeads,
+          slidingWindow: cfg.slidingWindow,
+          globalHeadDim: cfg.globalHeadDim,
+          nGlobalKvHeads: cfg.nGlobalKvHeads,
+          fullAttnEvery: cfg.fullAttnEvery,
+          qkNorm: cfg.qkNorm,
+          attentionKEqV: cfg.attentionKEqV,
+          ropeLocalBase: cfg.ropeLocalBase,
+          ropeBase: cfg.ropeBase,
+          partialRotaryFactor: cfg.partialRotaryFactor,
+          numKvSharedLayers: cfg.numKvSharedLayers,
+          pleDim: cfg.pleDim,
+          finalLogitSoftcapping: cfg.finalLogitSoftcapping,
+          learningRate: cfg.learningRate,
+          maxIters: cfg.maxIters,
+          warmupSteps: cfg.warmupSteps,
+          minLr: cfg.minLr,
+          batchSize: cfg.batchSize,
+          blockSize: cfg.blockSize,
+          gradAccumSteps: cfg.gradAccumSteps,
+          weightDecay: cfg.weightDecay,
+          gradClip: cfg.gradClip,
+          adamEps: cfg.adamEps,
+          beta1: cfg.beta1,
+          beta2: cfg.beta2,
+          precision: cfg.precision,
+        }),
+      });
+    } catch {
+      setTrainStatus("error");
+      setTrainMessage("Couldn't reach the training backend. Is train_service.py running?");
+      return;
+    }
+
+    const data = await res.json().catch(() => ({ ok: false, error: "Bad response from backend." }));
+    if (!res.ok || data.ok === false) {
+      setTrainStatus("error");
+      setTrainMessage(data.error ?? "Couldn't start training.");
+      return;
+    }
+
+    esRef.current?.close();
+    const es = new EventSource("/api/train/stream");
+    esRef.current = es;
+
+    es.onmessage = (ev) => {
+      const event = JSON.parse(ev.data);
+      if (event.type === "point") {
+        setTrainStatus("training");
+        setHistory((h) => [...h, { step: event.step, loss: event.loss, smoothed: event.smoothed }]);
+      } else if (event.type === "status") {
+        setTrainStatus(event.status);
+        setTrainMessage(event.message ?? "");
+        if (event.status === "done" || event.status === "error" || event.status === "stopped") {
+          es.close();
+        }
+      } else if (event.type === "checkpoint") {
+        setHasCheckpoint(true);
       }
-    }, 130);
+    };
+
+    es.onerror = () => {
+      es.close();
+      setTrainStatus((s) => (s === "training" || s === "preparing_data" || s === "starting" ? "error" : s));
+      setTrainMessage((m) => m || "Lost connection to the training backend.");
+    };
+  };
+
+  const stopTraining = () => {
+    fetch("/api/train/stop", { method: "POST" }).catch(() => {});
   };
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      esRef.current?.close();
     };
   }, []);
 
@@ -623,7 +699,7 @@ export default function SLMBuilder() {
       <div className="border-b border-white/[0.06] px-6 py-12">
         <div className="mx-auto max-w-7xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-xs font-semibold text-violet-300">
-            🧬 Runs entirely in your browser — nothing here leaves your machine
+            🧬 Trains a real model on TinyStories — runs locally, nothing leaves this machine
           </div>
           <h1 className="text-3xl font-extrabold text-white sm:text-4xl">IdeaWeaver SLM Builder</h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-400 leading-relaxed">
@@ -792,15 +868,54 @@ export default function SLMBuilder() {
 
                 <LossChart data={history} target={1.2} />
 
-                <button
-                  onClick={startTraining}
-                  disabled={running}
-                  className="mt-4 w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(124,58,237,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
-                >
-                  {running ? "Training… (simulated)" : "▶ Start Training (simulated)"}
-                </button>
+                {trainMessage && (running || trainStatus === "error") && (
+                  <div
+                    className={`mt-3 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
+                      trainStatus === "error"
+                        ? "border-red-500/25 bg-red-500/[0.06] text-red-200"
+                        : "border-white/[0.08] bg-black/20 text-zinc-400"
+                    }`}
+                  >
+                    {trainStatus === "preparing_data" ? "⏳ " : trainStatus === "error" ? "⚠️ " : ""}
+                    {trainMessage}
+                  </div>
+                )}
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={startTraining}
+                    disabled={running}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(124,58,237,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                  >
+                    {trainStatus === "starting"
+                      ? "Starting…"
+                      : trainStatus === "preparing_data"
+                        ? "Preparing dataset…"
+                        : trainStatus === "training"
+                          ? `Training… step ${history[history.length - 1]?.step ?? 0}/${cfg.maxIters}`
+                          : "▶ Start Training"}
+                  </button>
+                  {running && (
+                    <button
+                      onClick={stopTraining}
+                      className="rounded-xl border border-white/[0.15] px-4 py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-red-500/40 hover:text-red-300"
+                    >
+                      Stop
+                    </button>
+                  )}
+                </div>
+
+                {hasCheckpoint && !running && (
+                  <a
+                    href="/api/train/checkpoint"
+                    className="mt-2 block w-full rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-center text-xs font-semibold text-violet-200 transition hover:border-violet-500/50"
+                  >
+                    ⬇ Download checkpoint (.pt)
+                  </a>
+                )}
+
                 <p className="mt-2 text-center text-[10px] text-zinc-600">
-                  Preview only — this doesn't train a real model.
+                  Trains a real model on TinyStories — needs the Python backend running (see README).
                 </p>
               </Card>
             </div>

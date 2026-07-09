@@ -224,3 +224,10 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Training backend — tokenizer/data/checkpoints are generated, never committed
+backend/data/
+backend/checkpoints/
+backend/__pycache__/
+*.pt
+*.bin

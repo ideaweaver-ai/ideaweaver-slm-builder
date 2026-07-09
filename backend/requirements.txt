@@ -1,0 +1,10 @@
+# For local (non-Colab) use. In Colab, torch/numpy are already installed
+# with CUDA support — the notebook installs only the remaining packages
+# below to avoid reinstalling (and potentially downgrading) torch.
+fastapi
+uvicorn
+torch
+numpy
+sentencepiece
+datasets
+tqdm
