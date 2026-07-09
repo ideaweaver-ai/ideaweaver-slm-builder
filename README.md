@@ -9,6 +9,17 @@ and watch a real loss curve.
 Built by [IdeaWeaver AI Labs](https://www.ideaweaver.ai) to go with the
 [Building Small Language Models from Scratch](https://www.ideaweaver.ai/courses) course.
 
+## Screenshots
+
+**Model Architecture** — every attention/RoPE/KV-sharing knob, with live parameter and VRAM
+estimates and a connected training backend in the Run panel:
+
+![Model Architecture card and Run panel with live parameter/VRAM estimates](public/slm-builder-1.png)
+
+**Dataset and Training Hyperparameters** — optimizer, schedule, and batch shape, ready to train:
+
+![Dataset and Training Hyperparameters cards next to the Run panel](public/slm-builder-2.png)
+
 ## How it fits together
 
 - **`src/`** — the Next.js frontend: the configurator UI, live parameter/VRAM estimator, and the
