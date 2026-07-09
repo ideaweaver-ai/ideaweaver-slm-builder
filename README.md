@@ -42,7 +42,10 @@ estimates and a connected training backend in the Run panel:
    if Colab shows one — that's normal for any notebook not authored by Google.
 4. **Watch it work through the setup cells:** clone the repo → install Node 20 + frontend deps →
    install the backend's Python deps (skipping `torch`/`numpy`, which Colab already has with CUDA)
-   → start the training backend on port 8001 → start the frontend on port 3000 and embed it.
+   → start the training backend on port 8001 → **build** and start the frontend in production mode
+   on port 3000 and embed it. (Production mode, not `next dev` — dev mode's hot-reload websocket
+   doesn't survive being proxied through Colab's iframe and silently breaks React entirely, so the
+   build step here is required, not optional.)
 5. **Use the app.** Scroll to the last cell — the IdeaWeaver SLM Builder UI renders directly in the
    notebook. The **Run** card shows a live 🟢/🔴 "training backend connected" indicator — check
    that's green before clicking Start Training. Configure the architecture, then click
@@ -55,10 +58,19 @@ estimates and a connected training backend in the Run panel:
    embedded iframe works fine without it, this is only for that.
 7. **To stop or restart**, use *Runtime → Restart session* and *Run all* again.
 
-**If "Start Training" does nothing:** check the 🟢/🔴 indicator in the Run card first — red means
-the browser can't reach the backend. Scroll up to the "Start the training backend" cell's output;
-if it shows a traceback, that's the real error (a failed `pip install`, a port conflict, etc.). If
-that cell shows "Training backend is up" but the indicator is still red, re-run the frontend cell.
+**If "Start Training" does nothing — and nothing else on the page responds either (presets,
+inputs, etc.):** the page loaded but React never hydrated. This happens if the frontend is somehow
+running in dev mode (`next dev`) behind a proxy instead of the production build the notebook uses
+by default — confirm the "Build and start the frontend" cell actually ran `npm run build` first. A
+quick way to check: open your browser's DevTools console — repeated `WebSocket ... webpack-hmr ...
+502` errors mean you're looking at a dev-mode server, and clicks will silently do nothing no matter
+what the 🟢/🔴 indicator says.
+
+**If the page is otherwise interactive but "Start Training" specifically does nothing:** check the
+🟢/🔴 indicator in the Run card — red means the browser can't reach the backend. Scroll up to the
+"Start the training backend" cell's output; if it shows a traceback, that's the real error (a
+failed `pip install`, a port conflict, etc.). If that cell shows "Training backend is up" but the
+indicator is still red, re-run the frontend cell.
 
 ## Run it locally
 
@@ -77,6 +89,12 @@ npm run dev
 
 Then open http://localhost:3000. Training runs on GPU automatically if `torch.cuda.is_available()`;
 otherwise it falls back to CPU (correct, but slow for anything beyond a tiny config).
+
+`npm run dev` is fine for plain `localhost` access. If you're exposing the app through anything
+that proxies it (a tunnel like `ngrok`/`cloudflared`, a reverse proxy, etc.), use a production
+build instead — `npm run build && npm run start` — dev mode's hot-reload websocket doesn't survive
+most proxies and silently breaks React hydration (the page loads, but clicking anything does
+nothing). This is exactly what the Colab notebook does and why.
 
 ## What's real vs. estimated
 
