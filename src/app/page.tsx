@@ -521,6 +521,7 @@ export default function SLMBuilder() {
   const [trainStatus, setTrainStatus] = useState<TrainStatus>("idle");
   const [trainMessage, setTrainMessage] = useState("");
   const [hasCheckpoint, setHasCheckpoint] = useState(false);
+  const [backendUp, setBackendUp] = useState<boolean | null>(null); // null = still checking
   const esRef = useRef<EventSource | null>(null);
   const running = trainStatus === "starting" || trainStatus === "preparing_data" || trainStatus === "training";
 
@@ -691,6 +692,24 @@ export default function SLMBuilder() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const checkBackend = async () => {
+      try {
+        const res = await fetch("/api/train/status", { cache: "no-store" });
+        if (!cancelled) setBackendUp(res.ok);
+      } catch {
+        if (!cancelled) setBackendUp(false);
+      }
+    };
+    checkBackend();
+    const interval = setInterval(checkBackend, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#09090b]">
       <Nav />
@@ -841,6 +860,27 @@ export default function SLMBuilder() {
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-4">
               <Card title="Run" subtitle="Live estimates from your config" icon="📊">
+                <div
+                  className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-semibold ${
+                    backendUp === null
+                      ? "border-white/[0.08] bg-black/20 text-zinc-500"
+                      : backendUp
+                        ? "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300"
+                        : "border-red-500/25 bg-red-500/[0.06] text-red-300"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      backendUp === null ? "bg-zinc-500" : backendUp ? "bg-emerald-400" : "bg-red-400"
+                    }`}
+                  />
+                  {backendUp === null
+                    ? "Checking training backend…"
+                    : backendUp
+                      ? "Training backend connected"
+                      : "Training backend unreachable — check the backend cell's output in Colab"}
+                </div>
+
                 <div className="mb-4 grid grid-cols-2 gap-2.5">
                   <StatTile label="Parameters" value={fmtParams(params.total)} sub={params.total.toLocaleString()} />
                   <StatTile label="Peak VRAM (est.)" value={`${peakVramGB.toFixed(1)} GB`} sub={`of ${gpuInfo.vramGB} GB on ${cfg.gpu}`} />

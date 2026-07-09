@@ -33,14 +33,21 @@ Built by [IdeaWeaver AI Labs](https://www.ideaweaver.ai) to go with the
    install the backend's Python deps (skipping `torch`/`numpy`, which Colab already has with CUDA)
    → start the training backend on port 8001 → start the frontend on port 3000 and embed it.
 5. **Use the app.** Scroll to the last cell — the IdeaWeaver SLM Builder UI renders directly in the
-   notebook. Configure the architecture, then click **Start Training**. The first run spends
-   several minutes downloading and tokenizing TinyStories (watch the status line under the chart);
-   every run after that reuses the cached data. **Stop** anytime and download the checkpoint.
-6. **To stop or restart**, use *Runtime → Restart session* and *Run all* again.
+   notebook. The **Run** card shows a live 🟢/🔴 "training backend connected" indicator — check
+   that's green before clicking Start Training. Configure the architecture, then click
+   **Start Training**. The first run spends several minutes downloading and tokenizing TinyStories
+   (watch the status line under the chart); every run after that reuses the cached data. **Stop**
+   anytime and download the checkpoint.
+6. **(Optional) Get a public link.** The second-to-last cell spins up a
+   [`cloudflared` quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
+   and prints a real `https://…trycloudflare.com` URL you can open outside Colab or share — the
+   embedded iframe works fine without it, this is only for that.
+7. **To stop or restart**, use *Runtime → Restart session* and *Run all* again.
 
-**If the iframe shows blank or an error:** the frontend usually just needs a moment — re-run its
-cell. If "Start Training" says the backend isn't reachable, check the backend cell's log output
-for the actual error.
+**If "Start Training" does nothing:** check the 🟢/🔴 indicator in the Run card first — red means
+the browser can't reach the backend. Scroll up to the "Start the training backend" cell's output;
+if it shows a traceback, that's the real error (a failed `pip install`, a port conflict, etc.). If
+that cell shows "Training backend is up" but the indicator is still red, re-run the frontend cell.
 
 ## Run it locally
 
