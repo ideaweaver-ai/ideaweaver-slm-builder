@@ -523,7 +523,9 @@ export default function SLMBuilder() {
   const [hasCheckpoint, setHasCheckpoint] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null); // null = still checking
   const [backendSlow, setBackendSlow] = useState(false); // last check timed out rather than failing to connect
+  const [elapsedSec, setElapsedSec] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+  const runStartRef = useRef<number | null>(null);
   const running = trainStatus === "starting" || trainStatus === "preparing_data" || trainStatus === "training";
 
   const set = <K extends keyof Config>(key: K, value: Config[K]) =>
@@ -532,10 +534,12 @@ export default function SLMBuilder() {
   const resetTrainingUI = () => {
     esRef.current?.close();
     esRef.current = null;
+    runStartRef.current = null;
     setHistory([]);
     setTrainStatus("idle");
     setTrainMessage("");
     setHasCheckpoint(false);
+    setElapsedSec(0);
   };
 
   const applyPreset = (id: string) => {
@@ -601,6 +605,8 @@ export default function SLMBuilder() {
     setHasCheckpoint(false);
     setTrainStatus("starting");
     setTrainMessage("Starting…");
+    runStartRef.current = Date.now();
+    setElapsedSec(0);
 
     let res: Response;
     try {
@@ -692,6 +698,17 @@ export default function SLMBuilder() {
       esRef.current?.close();
     };
   }, []);
+
+  // Ticks independently of backend messages so the UI always visibly moves
+  // during long, mostly-silent phases (dataset download, tokenizing) instead
+  // of looking stuck between the backend's own progress updates.
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => {
+      if (runStartRef.current) setElapsedSec(Math.floor((Date.now() - runStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [running]);
 
   useEffect(() => {
     let cancelled = false;
@@ -815,11 +832,14 @@ export default function SLMBuilder() {
               </div>
             </Card>
 
-            <Card title="Dataset" subtitle="Fixed for this build" icon="📚">
-              <div className="rounded-lg border border-white/[0.08] bg-black/20 px-3 py-2.5 text-sm text-zinc-300">
-                <span className="font-semibold text-white">TinyStories</span> — the only dataset this
-                build trains on right now (~450M tokens, used for the epoch estimate in the Run panel).
-              </div>
+            <Card title="Dataset" subtitle="What the model trains on" icon="📚">
+              <SelectField
+                label="Dataset"
+                value="tinystories"
+                onChange={() => {}}
+                options={[{ value: "tinystories", label: "TinyStories — ~450M tokens" }]}
+                hint="Only option for now — more datasets are on the roadmap. Token count feeds the epoch estimate in the Run panel."
+              />
             </Card>
 
             <Card title="Training Hyperparameters" subtitle="Optimizer, schedule, and batch shape" icon="⚙️">
@@ -931,6 +951,13 @@ export default function SLMBuilder() {
                 )}
 
                 <LossChart data={history} target={1.2} />
+
+                {running && (
+                  <div className="mt-3 flex items-center gap-2 text-[11px] text-zinc-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+                    Working… {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, "0")} elapsed
+                  </div>
+                )}
 
                 {trainMessage && (running || trainStatus === "error") && (
                   <div
