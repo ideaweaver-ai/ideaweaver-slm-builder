@@ -522,6 +522,7 @@ export default function SLMBuilder() {
   const [trainMessage, setTrainMessage] = useState("");
   const [hasCheckpoint, setHasCheckpoint] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null); // null = still checking
+  const [backendSlow, setBackendSlow] = useState(false); // last check timed out rather than failing to connect
   const esRef = useRef<EventSource | null>(null);
   const running = trainStatus === "starting" || trainStatus === "preparing_data" || trainStatus === "training";
 
@@ -696,10 +697,23 @@ export default function SLMBuilder() {
     let cancelled = false;
     const checkBackend = async () => {
       try {
-        const res = await fetch("/api/train/status", { cache: "no-store" });
-        if (!cancelled) setBackendUp(res.ok);
+        const res = await fetch("/api/train/status", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(5000),
+        });
+        if (cancelled) return;
+        setBackendUp(res.ok);
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setBackendSlow(body?.reason === "timeout");
+        } else {
+          setBackendSlow(false);
+        }
       } catch {
-        if (!cancelled) setBackendUp(false);
+        if (!cancelled) {
+          setBackendUp(false);
+          setBackendSlow(false);
+        }
       }
     };
     checkBackend();
@@ -866,19 +880,29 @@ export default function SLMBuilder() {
                       ? "border-white/[0.08] bg-black/20 text-zinc-500"
                       : backendUp
                         ? "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300"
-                        : "border-red-500/25 bg-red-500/[0.06] text-red-300"
+                        : backendSlow
+                          ? "border-amber-500/25 bg-amber-500/[0.06] text-amber-300"
+                          : "border-red-500/25 bg-red-500/[0.06] text-red-300"
                   }`}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      backendUp === null ? "bg-zinc-500" : backendUp ? "bg-emerald-400" : "bg-red-400"
+                      backendUp === null
+                        ? "bg-zinc-500"
+                        : backendUp
+                          ? "bg-emerald-400"
+                          : backendSlow
+                            ? "bg-amber-400"
+                            : "bg-red-400"
                     }`}
                   />
                   {backendUp === null
                     ? "Checking training backend…"
                     : backendUp
                       ? "Training backend connected"
-                      : "Training backend unreachable — check the backend cell's output in Colab"}
+                      : backendSlow
+                        ? "Training backend is slow to respond — likely busy preparing/training, not down"
+                        : "Training backend unreachable — check the backend cell's output in Colab"}
                 </div>
 
                 <div className="mb-4 grid grid-cols-2 gap-2.5">
