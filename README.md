@@ -98,6 +98,8 @@ nothing). This is exactly what the Colab notebook does and why.
 
 ## Pushing a trained model to Hugging Face
 
+![Push to Hugging Face form in the Run panel, with username, repo name, token, and private-repo toggle](public/slm-builder-3.png)
+
 The Run panel always shows a **Push to Hugging Face** form — your Hugging Face username, a repo
 name, a token with write access, and a public/private toggle. The push button stays disabled with
 a "train a model first" hint until a run finishes (or you Stop it early). It uploads:
