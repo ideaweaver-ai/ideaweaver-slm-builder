@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
    ──────────────────────────────────────────────────────────────────────── */
 
 const IDEAWEAVER_HOME = "https://ideaweaver.ai";
-const IDEAWEAVER_COURSES = "https://ideaweaver.ai/courses";
+const IDEAWEAVER_COURSES = "https://ideaweaver.ai/#courses"; // in-page section, not a separate route
 const BOOK_URL = "https://plakhera.gumroad.com/l/BuildingASmallLanguageModelfromScratch";
 
 type Precision = "bfloat16" | "float16";

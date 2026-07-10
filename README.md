@@ -7,7 +7,7 @@ parameter-count and VRAM estimate update as you go, then **actually train it** o
 and watch a real loss curve.
 
 Built by [IdeaWeaver AI Labs](https://ideaweaver.ai) to go with the
-[Building Small Language Models from Scratch](https://ideaweaver.ai/courses) course.
+[Building Small Language Models from Scratch](https://ideaweaver.ai/#courses) course.
 
 ## Screenshots
 
