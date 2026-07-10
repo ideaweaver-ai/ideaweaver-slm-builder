@@ -521,7 +521,8 @@ export default function SLMBuilder() {
   const [trainStatus, setTrainStatus] = useState<TrainStatus>("idle");
   const [trainMessage, setTrainMessage] = useState("");
   const [hasCheckpoint, setHasCheckpoint] = useState(false);
-  const [hfRepoId, setHfRepoId] = useState("");
+  const [hfUsername, setHfUsername] = useState(""); // your Hugging Face username or org
+  const [hfRepoName, setHfRepoName] = useState(""); // the model repo name under that username
   const [hfToken, setHfToken] = useState(""); // kept only in memory — never persisted, cleared on refresh
   const [hfPrivate, setHfPrivate] = useState(true);
   const [pushState, setPushState] = useState<"idle" | "pushing" | "done" | "error">("idle");
@@ -703,11 +704,12 @@ export default function SLMBuilder() {
   const pushToHub = async () => {
     setPushState("pushing");
     setPushMessage("");
+    const repoId = `${hfUsername.trim()}/${hfRepoName.trim()}`;
     try {
       const res = await fetch("/api/train/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoId: hfRepoId.trim(), hfToken: hfToken.trim(), private: hfPrivate }),
+        body: JSON.stringify({ repoId, hfToken: hfToken.trim(), private: hfPrivate }),
       });
       const data = await res.json().catch(() => ({ ok: false, error: "Bad response from backend." }));
       if (!res.ok || !data.ok) {
@@ -1035,53 +1037,71 @@ export default function SLMBuilder() {
                   </a>
                 )}
 
-                {hasCheckpoint && !running && (
-                  <div className="mt-3 space-y-2 rounded-lg border border-white/[0.08] bg-black/20 p-3">
-                    <div className="text-[11px] font-semibold text-zinc-300">Push to Hugging Face</div>
+                <div className="mt-3 space-y-2 rounded-lg border border-white/[0.08] bg-black/20 p-3">
+                  <div className="text-[11px] font-semibold text-zinc-300">Push to Hugging Face</div>
+                  {!hasCheckpoint && (
+                    <p className="text-[10px] text-zinc-500">
+                      Train a model first — this unlocks once you have a checkpoint to push.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
-                      value={hfRepoId}
-                      onChange={(e) => setHfRepoId(e.target.value)}
-                      placeholder="your-username/model-name"
+                      value={hfUsername}
+                      onChange={(e) => setHfUsername(e.target.value)}
+                      placeholder="Hugging Face username"
                       className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-xs text-white outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
                     />
                     <input
-                      type="password"
-                      value={hfToken}
-                      onChange={(e) => setHfToken(e.target.value)}
-                      placeholder="hf_... (write access token)"
+                      type="text"
+                      value={hfRepoName}
+                      onChange={(e) => setHfRepoName(e.target.value)}
+                      placeholder="repo name"
                       className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-xs text-white outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
                     />
-                    <label className="flex items-center gap-2 text-[11px] text-zinc-400">
-                      <input
-                        type="checkbox"
-                        checked={hfPrivate}
-                        onChange={(e) => setHfPrivate(e.target.checked)}
-                        className="accent-violet-500"
-                      />
-                      Private repo
-                    </label>
-                    <button
-                      onClick={pushToHub}
-                      disabled={pushState === "pushing" || !hfRepoId.trim() || !hfToken.trim()}
-                      className="w-full rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:border-violet-500/50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {pushState === "pushing" ? "Pushing…" : "⬆ Push to Hugging Face"}
-                    </button>
-                    {pushState === "done" && (
-                      <a
-                        href={pushMessage}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-center text-[11px] text-emerald-300 hover:text-emerald-200"
-                      >
-                        ✓ Pushed — view on Hugging Face ↗
-                      </a>
-                    )}
-                    {pushState === "error" && <div className="text-[11px] text-red-300">{pushMessage}</div>}
-                    <p className="text-[10px] text-zinc-600">Token is only used for this upload — never stored.</p>
                   </div>
-                )}
+                  <input
+                    type="password"
+                    value={hfToken}
+                    onChange={(e) => setHfToken(e.target.value)}
+                    placeholder="Hugging Face token (hf_..., write access)"
+                    className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-xs text-white outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
+                  />
+                  <label className="flex items-center gap-2 text-[11px] text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={hfPrivate}
+                      onChange={(e) => setHfPrivate(e.target.checked)}
+                      className="accent-violet-500"
+                    />
+                    Private repo
+                  </label>
+                  <button
+                    onClick={pushToHub}
+                    disabled={
+                      !hasCheckpoint ||
+                      pushState === "pushing" ||
+                      !hfUsername.trim() ||
+                      !hfRepoName.trim() ||
+                      !hfToken.trim()
+                    }
+                    className="w-full rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:border-violet-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {pushState === "pushing" ? "Pushing…" : "⬆ Push to Hugging Face"}
+                  </button>
+                  {pushState === "done" && (
+                    <a
+                      href={pushMessage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-center text-[11px] text-emerald-300 hover:text-emerald-200"
+                    >
+                      ✓ Pushed — view on Hugging Face ↗
+                    </a>
+                  )}
+                  {pushState === "error" && <div className="text-[11px] text-red-300">{pushMessage}</div>}
+                  <p className="text-[10px] text-zinc-600">Token is only used for this upload — never stored.</p>
+                </div>
 
                 <p className="mt-2 text-center text-[10px] text-zinc-600">
                   Trains a real model on TinyStories — needs the Python backend running (see README).
