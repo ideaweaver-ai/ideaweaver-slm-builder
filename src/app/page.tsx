@@ -14,9 +14,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
    Requires the backend running locally or in Colab (see README).
    ──────────────────────────────────────────────────────────────────────── */
 
-const IDEAWEAVER_HOME = "https://www.ideaweaver.ai";
-const IDEAWEAVER_COURSES = "https://www.ideaweaver.ai/courses";
-const GITHUB_REPO = "https://github.com/ideaweaver-ai/ideaweaver-slm-builder";
+const IDEAWEAVER_HOME = "https://ideaweaver.ai";
+const IDEAWEAVER_COURSES = "https://ideaweaver.ai/courses";
+const BOOK_URL = "https://plakhera.gumroad.com/l/BuildingASmallLanguageModelfromScratch";
 
 type Precision = "bfloat16" | "float16";
 type GPU = "T4" | "L4" | "A100" | "H100";
@@ -494,11 +494,6 @@ function Nav() {
           <img src="/logo.png" alt="IdeaWeaver AI Labs" className="h-9 w-auto" />
           <span className="hidden text-sm font-semibold text-zinc-500 sm:inline">/ SLM Builder</span>
         </a>
-        <div className="hidden items-center gap-8 text-sm md:flex">
-          <a href={IDEAWEAVER_HOME} className="text-zinc-400 transition hover:text-white">Home</a>
-          <a href={IDEAWEAVER_COURSES} className="text-zinc-400 transition hover:text-white">Courses</a>
-          <a href={GITHUB_REPO} target="_blank" rel="noopener noreferrer" className="text-zinc-400 transition hover:text-white">GitHub</a>
-        </div>
         <a
           href={IDEAWEAVER_COURSES}
           className="shimmer-hover relative overflow-hidden inline-block rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-[0_0_30px_rgba(124,58,237,0.35)] transition hover:scale-[1.03]"
@@ -1123,6 +1118,34 @@ export default function SLMBuilder() {
           >
             Building Small Language Models from Scratch →
           </a>
+        </div>
+
+        {/* Book */}
+        <div className="mt-6 flex flex-col items-center gap-6 rounded-2xl border border-white/[0.08] bg-[#111116] p-6 sm:flex-row">
+          <img
+            src="/book-cover.jpg"
+            alt="Building a Small Language Model from Scratch: A Practical Guide — book cover"
+            className="h-44 w-auto rounded-lg border border-white/10 shadow-lg"
+          />
+          <div className="flex-1 text-center sm:text-left">
+            <div className="text-xs font-semibold uppercase tracking-wide text-violet-400">New Book</div>
+            <h3 className="mt-1 text-lg font-bold text-white">
+              Building a Small Language Model from Scratch: A Practical Guide
+            </h3>
+            <p className="mt-2 text-sm text-zinc-400 leading-relaxed">
+              An 854-page, hands-on guide to implementing a complete 283M-parameter Qwen3-style model
+              from scratch — attention, RoPE, GQA, RMSNorm, SwiGLU, and a full training pipeline on
+              TinyStories. By Prashant Lakhera.
+            </p>
+            <a
+              href={BOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-block rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(124,58,237,0.35)] transition hover:scale-[1.03]"
+            >
+              Get the book ↗
+            </a>
+          </div>
         </div>
       </div>
     </div>

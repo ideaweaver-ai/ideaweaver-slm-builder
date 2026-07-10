@@ -6,8 +6,8 @@ cross-layer KV-cache sharing. Tune every architecture and training variable, see
 parameter-count and VRAM estimate update as you go, then **actually train it** on TinyStories
 and watch a real loss curve.
 
-Built by [IdeaWeaver AI Labs](https://www.ideaweaver.ai) to go with the
-[Building Small Language Models from Scratch](https://www.ideaweaver.ai/courses) course.
+Built by [IdeaWeaver AI Labs](https://ideaweaver.ai) to go with the
+[Building Small Language Models from Scratch](https://ideaweaver.ai/courses) course.
 
 ## Screenshots
 
@@ -98,9 +98,9 @@ nothing). This is exactly what the Colab notebook does and why.
 
 ## Pushing a trained model to Hugging Face
 
-Once a run finishes (or you Stop it early), the Run panel shows a **Push to Hugging Face** form:
-a repo id (`your-username/model-name`), a Hugging Face token with write access, and a public/private
-toggle. It uploads:
+The Run panel always shows a **Push to Hugging Face** form — your Hugging Face username, a repo
+name, a token with write access, and a public/private toggle. The push button stays disabled with
+a "train a model first" hint until a run finishes (or you Stop it early). It uploads:
 
 - `pytorch_model.pt` — the raw `state_dict()`
 - `config.json` — the architecture config used to build it
