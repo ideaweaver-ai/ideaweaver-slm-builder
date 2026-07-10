@@ -8,3 +8,4 @@ numpy
 sentencepiece
 datasets
 tqdm
+huggingface_hub

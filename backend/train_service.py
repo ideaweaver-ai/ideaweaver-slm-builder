@@ -71,6 +71,12 @@ class TrainConfig(BaseModel):
     precision: str  # "bfloat16" | "float16"
 
 
+class PushToHubRequest(BaseModel):
+    repoId: str  # "username/model-name"
+    hfToken: str
+    private: bool = True
+
+
 class Job:
     def __init__(self):
         self.status = "idle"  # idle | preparing_data | training | done | error | stopped
@@ -82,6 +88,8 @@ class Job:
         self.stop_flag = threading.Event()
         self.checkpoint_path: Optional[str] = None
         self.error: Optional[str] = None
+        self.last_config: Optional[dict] = None  # JSON-safe architecture config, for push-to-hub
+        self.last_param_count: Optional[int] = None
 
 
 job = Job()
@@ -151,6 +159,8 @@ def training_worker(cfg: TrainConfig, loop: asyncio.AbstractEventLoop):
         set_status(loop, "training", f"Building model on {device}...")
 
         model = Gemma4Model(gemma_cfg).to(device)
+        job.last_config = {**gemma_cfg, "dtype": str(gemma_cfg["dtype"])}  # torch.dtype isn't JSON-safe
+        job.last_param_count = sum(p.numel() for p in model.parameters())
 
         optimizer = torch.optim.AdamW(
             model.parameters(), lr=cfg.learningRate,
@@ -213,6 +223,7 @@ def training_worker(cfg: TrainConfig, loop: asyncio.AbstractEventLoop):
 
         stopped_early = job.stop_flag.is_set()
 
+        os.makedirs(CKPT_DIR, exist_ok=True)  # in case it was removed after startup
         ckpt_path = os.path.join(CKPT_DIR, f"slm_{uuid.uuid4().hex[:8]}.pt")
         torch.save(model.state_dict(), ckpt_path)
         job.checkpoint_path = ckpt_path
@@ -296,6 +307,112 @@ async def checkpoint():
         filename=os.path.basename(job.checkpoint_path),
         media_type="application/octet-stream",
     )
+
+
+def _push_to_hub(req: PushToHubRequest) -> str:
+    """Blocking upload — run via asyncio.to_thread so it doesn't stall the
+    event loop (SSE stream, /train/status, etc.) for the duration."""
+    from huggingface_hub import HfApi
+
+    api = HfApi(token=req.hfToken)
+    api.create_repo(req.repoId, private=req.private, exist_ok=True)
+
+    api.upload_file(
+        path_or_fileobj=job.checkpoint_path,
+        path_in_repo="pytorch_model.pt",
+        repo_id=req.repoId,
+    )
+
+    tmp_files = []
+    try:
+        if job.last_config is not None:
+            config_path = os.path.join(DATA_DIR, "_upload_config.json")
+            with open(config_path, "w") as f:
+                json.dump(job.last_config, f, indent=2)
+            tmp_files.append(config_path)
+            api.upload_file(path_or_fileobj=config_path, path_in_repo="config.json", repo_id=req.repoId)
+
+        for fname in ("tinystories_tokenizer.model", "tinystories_tokenizer.vocab"):
+            fpath = os.path.join(DATA_DIR, fname)
+            if os.path.exists(fpath):
+                api.upload_file(path_or_fileobj=fpath, path_in_repo=fname, repo_id=req.repoId)
+
+        param_str = f"{job.last_param_count:,}" if job.last_param_count else "unknown"
+        model_name = req.repoId.split("/")[-1]
+        readme = f"""---
+tags:
+  - ideaweaver-slm-builder
+  - text-generation
+  - tinystories
+---
+
+# {model_name}
+
+A Gemma-4-Nano-style small language model — interleaved local/global attention, grouped-query
+attention, QK-RMSNorm, partial RoPE, and cross-layer KV-cache sharing — trained on TinyStories
+with [IdeaWeaver SLM Builder](https://github.com/ideaweaver-ai/ideaweaver-slm-builder).
+
+- **Parameters**: {param_str}
+- **Trained for**: {job.step:,} steps
+- **Dataset**: [roneneldan/TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories)
+
+## Files
+
+- `pytorch_model.pt` — raw `state_dict()`, not a `transformers`-compatible checkpoint (this is a
+  custom architecture, not a registered `AutoModel` class).
+- `config.json` — the architecture config used to build the model.
+- `tinystories_tokenizer.model` / `.vocab` — the SentencePiece tokenizer it was trained with.
+
+## Loading it
+
+Use the `Gemma4Model` class from
+[`backend/model.py`](https://github.com/ideaweaver-ai/ideaweaver-slm-builder/blob/main/backend/model.py)
+in the IdeaWeaver SLM Builder repo:
+
+```python
+import json, torch
+from model import Gemma4Model
+
+with open("config.json") as f:
+    cfg = json.load(f)
+cfg["dtype"] = getattr(torch, cfg["dtype"].split(".")[-1])
+
+model = Gemma4Model(cfg)
+model.load_state_dict(torch.load("pytorch_model.pt", map_location="cpu"))
+```
+"""
+        readme_path = os.path.join(DATA_DIR, "_upload_readme.md")
+        with open(readme_path, "w") as f:
+            f.write(readme)
+        tmp_files.append(readme_path)
+        api.upload_file(path_or_fileobj=readme_path, path_in_repo="README.md", repo_id=req.repoId)
+    finally:
+        for p in tmp_files:
+            if os.path.exists(p):
+                os.remove(p)
+
+    return f"https://huggingface.co/{req.repoId}"
+
+
+@app.post("/train/push_to_hub")
+async def push_to_hub(req: PushToHubRequest):
+    if not job.checkpoint_path or not os.path.exists(job.checkpoint_path):
+        return JSONResponse(
+            {"ok": False, "error": "No checkpoint available yet — finish or stop a training run first."},
+            status_code=400,
+        )
+    if "/" not in req.repoId.strip("/"):
+        return JSONResponse(
+            {"ok": False, "error": "Repo id must look like username/model-name."}, status_code=400
+        )
+    if not req.hfToken:
+        return JSONResponse({"ok": False, "error": "Missing Hugging Face token."}, status_code=400)
+
+    try:
+        url = await asyncio.to_thread(_push_to_hub, req)
+        return {"ok": True, "url": url}
+    except Exception as e:  # noqa: BLE001 - surface the real error to the frontend
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
 
 
 @app.get("/health")

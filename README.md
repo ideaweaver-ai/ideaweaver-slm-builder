@@ -96,6 +96,23 @@ build instead — `npm run build && npm run start` — dev mode's hot-reload web
 most proxies and silently breaks React hydration (the page loads, but clicking anything does
 nothing). This is exactly what the Colab notebook does and why.
 
+## Pushing a trained model to Hugging Face
+
+Once a run finishes (or you Stop it early), the Run panel shows a **Push to Hugging Face** form:
+a repo id (`your-username/model-name`), a Hugging Face token with write access, and a public/private
+toggle. It uploads:
+
+- `pytorch_model.pt` — the raw `state_dict()`
+- `config.json` — the architecture config used to build it
+- `tinystories_tokenizer.model` / `.vocab` — the tokenizer it was trained with
+- `README.md` — an auto-generated model card
+
+This is a custom architecture, not a registered `transformers` model class, so the result isn't
+`AutoModel.from_pretrained()`-loadable out of the box — the model card explains how to load it with
+`backend/model.py`'s `Gemma4Model`. The token is only ever used for that one upload request and is
+never written to disk or stored anywhere (not even in the browser) — you'll need to paste it again
+for each push.
+
 ## What's real vs. estimated
 
 - Parameter count, VRAM estimate, and hardware warnings are computed client-side from the same
